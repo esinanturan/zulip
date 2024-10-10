@@ -11,15 +11,16 @@ const assert = require("node:assert/strict");
 const {zrequire} = require("./lib/namespace");
 const {run_test} = require("./lib/test");
 const blueslip = require("./lib/zblueslip");
-const {current_user, page_params} = require("./lib/zpage_params");
+const {page_params} = require("./lib/zpage_params");
 
 const peer_data = zrequire("peer_data");
 const people = zrequire("people");
+const {set_current_user} = zrequire("state_data");
 const stream_data = zrequire("stream_data");
 
-current_user.is_admin = false;
+set_current_user({});
+
 page_params.realm_users = [];
-current_user.is_guest = false;
 
 const me = {
     email: "me@zulip.com",

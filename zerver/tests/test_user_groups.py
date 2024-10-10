@@ -7,6 +7,7 @@ import time_machine
 from django.utils.timezone import now as timezone_now
 
 from zerver.actions.create_realm import do_create_realm
+from zerver.actions.create_user import do_reactivate_user
 from zerver.actions.realm_settings import (
     do_change_realm_permission_group_setting,
     do_set_realm_property,
@@ -91,6 +92,7 @@ class UserGroupTestCase(ZulipTestCase):
         user_group = NamedUserGroup.objects.filter(realm=realm).first()
         assert user_group is not None
         empty_user_group = check_add_user_group(realm, "newgroup", [], acting_user=user)
+        do_deactivate_user(self.example_user("hamlet"), acting_user=None)
 
         user_groups = user_groups_in_realm_serialized(realm, include_deactivated_groups=False)
         self.assert_length(user_groups, 10)
@@ -132,6 +134,10 @@ class UserGroupTestCase(ZulipTestCase):
         self.assertEqual(user_groups[2]["id"], admins_system_group.id)
         # Check that owners system group is present in "direct_subgroup_ids"
         self.assertEqual(user_groups[2]["direct_subgroup_ids"], [owners_system_group.id])
+
+        self.assertEqual(user_groups[8]["name"], "hamletcharacters")
+        # Test deactivated user is not included in the members list.
+        self.assertEqual(user_groups[8]["members"], [self.example_user("cordelia").id])
 
         everyone_group = NamedUserGroup.objects.get(
             name=SystemGroups.EVERYONE, realm=realm, is_system_group=True
@@ -286,6 +292,10 @@ class UserGroupTestCase(ZulipTestCase):
 
         self.assertIn(everyone_group.usergroup_ptr, get_recursive_membership_groups(shiva))
 
+        do_deactivate_user(iago, acting_user=None)
+        self.assertCountEqual(list(get_recursive_group_members(staff_group)), [desdemona])
+        self.assertCountEqual(list(get_recursive_group_members(everyone_group)), [desdemona, shiva])
+
     def test_subgroups_of_role_based_system_groups(self) -> None:
         realm = get_realm("zulip")
         owners_group = NamedUserGroup.objects.get(
@@ -370,6 +380,10 @@ class UserGroupTestCase(ZulipTestCase):
 
         self.assertFalse(is_user_in_group(moderators_group, hamlet))
         self.assertFalse(is_user_in_group(moderators_group, hamlet, direct_member_only=True))
+
+        do_deactivate_user(iago, acting_user=None)
+        self.assertFalse(is_user_in_group(moderators_group, iago))
+        self.assertFalse(is_user_in_group(administrators_group, iago, direct_member_only=True))
 
     def test_is_any_user_in_group(self) -> None:
         realm = get_realm("zulip")
@@ -1682,10 +1696,14 @@ class UserGroupAPITestCase(UserGroupTestCase):
         self.login_user(desdemona)
 
         params = {"add": orjson.dumps([desdemona.id, iago.id, webhook_bot.id]).decode()}
+        result = self.client_post(f"/json/user_groups/{user_group.id}/members", info=params)
+        self.assert_json_error(result, f"Invalid user ID: {iago.id}")
+
+        params = {"add": orjson.dumps([desdemona.id, webhook_bot.id]).decode()}
         initial_last_message = self.get_last_message()
         result = self.client_post(f"/json/user_groups/{user_group.id}/members", info=params)
         self.assert_json_success(result)
-        self.assert_user_membership(user_group, [hamlet, othello, desdemona, iago, webhook_bot])
+        self.assert_user_membership(user_group, [hamlet, othello, desdemona, webhook_bot])
 
         # No notification message is sent for adding to user group.
         self.assertEqual(self.get_last_message(), initial_last_message)
@@ -1698,7 +1716,7 @@ class UserGroupAPITestCase(UserGroupTestCase):
         initial_last_message = self.get_last_message()
         result = self.client_post(f"/json/user_groups/{user_group.id}/members", info=params)
         self.assert_json_success(result)
-        self.assert_user_membership(user_group, [hamlet, desdemona, iago, webhook_bot])
+        self.assert_user_membership(user_group, [hamlet, desdemona, webhook_bot])
 
         # A notification message is sent for removing from user group.
         self.assertNotEqual(self.get_last_message(), initial_last_message)
@@ -1711,13 +1729,25 @@ class UserGroupAPITestCase(UserGroupTestCase):
         params = {"delete": orjson.dumps([othello.id]).decode()}
         result = self.client_post(f"/json/user_groups/{user_group.id}/members", info=params)
         self.assert_json_error(result, f"There is no member '{othello.id}' in this user group")
-        self.assert_user_membership(user_group, [hamlet, desdemona, iago, webhook_bot])
+        self.assert_user_membership(user_group, [hamlet, desdemona, webhook_bot])
 
         # Test user remove itself,bot and deactivated user from user group.
         desdemona = self.example_user("desdemona")
         self.login_user(desdemona)
 
-        params = {"delete": orjson.dumps([desdemona.id, iago.id, webhook_bot.id]).decode()}
+        # Add user to group after reactivation to test removing deactivated user.
+        do_reactivate_user(iago, acting_user=None)
+        self.client_post(
+            f"/json/user_groups/{user_group.id}/members",
+            info={"add": orjson.dumps([iago.id]).decode()},
+        )
+        do_deactivate_user(iago, acting_user=None)
+
+        params = {"delete": orjson.dumps([iago.id, desdemona.id, webhook_bot.id]).decode()}
+        result = self.client_post(f"/json/user_groups/{user_group.id}/members", info=params)
+        self.assert_json_error(result, f"Invalid user ID: {iago.id}")
+
+        params = {"delete": orjson.dumps([desdemona.id, webhook_bot.id]).decode()}
         initial_last_message = self.get_last_message()
         result = self.client_post(f"/json/user_groups/{user_group.id}/members", info=params)
         self.assert_json_success(result)
@@ -2765,6 +2795,11 @@ class UserGroupAPITestCase(UserGroupTestCase):
         )
         self.assertFalse(result_dict["is_user_group_member"])
 
+        # Check membership of deactivated user.
+        do_deactivate_user(iago, acting_user=None)
+        result = self.client_get(f"/json/user_groups/{admins_group.id}/members/{iago.id}")
+        self.assert_json_error(result, "User is deactivated")
+
     def test_get_user_group_members(self) -> None:
         realm = get_realm("zulip")
         iago = self.example_user("iago")
@@ -2810,6 +2845,19 @@ class UserGroupAPITestCase(UserGroupTestCase):
             self.client_get(f"/json/user_groups/{moderators_group.id}/members", info=params).content
         )
         self.assertCountEqual(result_dict["members"], [shiva.id])
+
+        # Check deactivated users are not returned in members list.
+        do_deactivate_user(shiva, acting_user=None)
+        result_dict = orjson.loads(
+            self.client_get(f"/json/user_groups/{moderators_group.id}/members", info=params).content
+        )
+        self.assertCountEqual(result_dict["members"], [])
+
+        params = {"direct_member_only": orjson.dumps(False).decode()}
+        result_dict = orjson.loads(
+            self.client_get(f"/json/user_groups/{moderators_group.id}/members", info=params).content
+        )
+        self.assertCountEqual(result_dict["members"], [desdemona.id, iago.id])
 
     def test_get_subgroups_of_user_group(self) -> None:
         realm = get_realm("zulip")

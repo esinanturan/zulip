@@ -80,6 +80,7 @@ from zerver.models import (
     Client,
     CustomProfileField,
     Draft,
+    NamedUserGroup,
     Realm,
     RealmUserDefault,
     Recipient,
@@ -1092,11 +1093,42 @@ def apply_event(
                 if "new_email" in person:
                     p["email"] = person["new_email"]
 
-                if "is_active" in person and not person["is_active"] and include_subscribers:
-                    for sub in state["subscriptions"]:
-                        sub["subscribers"] = [
-                            user_id for user_id in sub["subscribers"] if user_id != person_user_id
+                if "is_active" in person and not person["is_active"]:
+                    if include_subscribers:
+                        for sub_dict in [
+                            state["subscriptions"],
+                            state["unsubscribed"],
+                            state["never_subscribed"],
+                        ]:
+                            for sub in sub_dict:
+                                sub["subscribers"] = [
+                                    user_id
+                                    for user_id in sub["subscribers"]
+                                    if user_id != person_user_id
+                                ]
+
+                    for user_group in state["realm_user_groups"]:
+                        user_group["members"] = [
+                            user_id
+                            for user_id in user_group["members"]
+                            if user_id != person_user_id
                         ]
+
+                    for setting_name in Realm.REALM_PERMISSION_GROUP_SETTINGS_WITH_NEW_API_FORMAT:
+                        if not isinstance(state["realm_" + setting_name], int):
+                            state["realm_" + setting_name].direct_members = [
+                                user_id
+                                for user_id in state["realm_" + setting_name].direct_members
+                                if user_id != person_user_id
+                            ]
+                    for group in state["realm_user_groups"]:
+                        for setting_name in NamedUserGroup.GROUP_PERMISSION_SETTINGS:
+                            if not isinstance(group[setting_name], int):
+                                group[setting_name].direct_members = [
+                                    user_id
+                                    for user_id in group[setting_name].direct_members
+                                    if user_id != person_user_id
+                                ]
         elif event["op"] == "remove":
             if person_user_id in state["raw_users"]:
                 if user_list_incomplete:
@@ -1108,10 +1140,15 @@ def apply_event(
                     state["raw_users"][person_user_id] = inaccessible_user_dict
 
             if include_subscribers:
-                for sub in state["subscriptions"]:
-                    sub["subscribers"] = [
-                        user_id for user_id in sub["subscribers"] if user_id != person_user_id
-                    ]
+                for sub_dict in [
+                    state["subscriptions"],
+                    state["unsubscribed"],
+                    state["never_subscribed"],
+                ]:
+                    for sub in sub_dict:
+                        sub["subscribers"] = [
+                            user_id for user_id in sub["subscribers"] if user_id != person_user_id
+                        ]
         else:
             raise AssertionError("Unexpected event type {type}/{op}".format(**event))
     elif event["type"] == "realm_bot":

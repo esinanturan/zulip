@@ -7,7 +7,7 @@ const {make_stub} = require("./lib/stub");
 const {run_test, noop} = require("./lib/test");
 const blueslip = require("./lib/zblueslip");
 const $ = require("./lib/zjquery");
-const {current_user, page_params, user_settings} = require("./lib/zpage_params");
+const {page_params} = require("./lib/zpage_params");
 
 const alice_user_id = 5;
 
@@ -59,6 +59,14 @@ const emoji = zrequire("emoji");
 const emoji_codes = zrequire("../../static/generated/emoji/emoji_codes.json");
 const people = zrequire("people");
 const reactions = zrequire("reactions");
+const {set_current_user, set_realm} = zrequire("state_data");
+const {initialize_user_settings} = zrequire("user_settings");
+
+const current_user = {};
+set_current_user(current_user);
+set_realm({});
+const user_settings = {};
+initialize_user_settings({user_settings});
 
 const emoji_params = {
     realm_emoji: {
@@ -108,7 +116,7 @@ people.add_active_user(alexus);
 
 function test(label, f) {
     run_test(label, (helpers) => {
-        current_user.user_id = alice_user_id;
+        helpers.override(current_user, "user_id", alice_user_id);
         f(helpers);
     });
 }
@@ -442,32 +450,32 @@ function stub_reaction(message_id, local_id) {
     return $reaction;
 }
 
-test("get_vote_text (more than 3 reactions)", () => {
+test("get_vote_text (more than 3 reactions)", ({override}) => {
     const user_ids = [5, 6, 7];
     const message = {...sample_message};
 
-    user_settings.display_emoji_reaction_users = true;
+    override(user_settings, "display_emoji_reaction_users", true);
     assert.equal(
         "translated: You, Bob van Roberts, Cali",
         reactions.get_vote_text(user_ids, message),
     );
 });
 
-test("get_vote_text (3 reactions)", () => {
+test("get_vote_text (3 reactions)", ({override}) => {
     const user_ids = [5, 6, 7];
     const message = {...sample_message};
 
     // slicing the reactions array to only include first 3 reactions
     message.reactions = message.reactions.slice(0, 3);
 
-    user_settings.display_emoji_reaction_users = true;
+    override(user_settings, "display_emoji_reaction_users", true);
     assert.equal(
         "translated: You, Bob van Roberts, Cali",
         reactions.get_vote_text(user_ids, message),
     );
 });
 
-test("update_vote_text_on_message", ({override_rewire}) => {
+test("update_vote_text_on_message", ({override, override_rewire}) => {
     // the vote_text in this message is intentionally wrong.
     // After calling update_vote_text_on_message(), we
     // will check if the vote_text has been correctly updated.
@@ -500,7 +508,7 @@ test("update_vote_text_on_message", ({override_rewire}) => {
     };
     convert_reactions_to_clean_reactions(message);
 
-    user_settings.display_emoji_reaction_users = true;
+    override(user_settings, "display_emoji_reaction_users", true);
 
     override_rewire(reactions, "find_reaction", noop);
     override_rewire(reactions, "set_reaction_vote_text", noop);
@@ -580,7 +588,7 @@ test("add_reaction/remove_reaction", ({override, override_rewire}) => {
     };
     convert_reactions_to_clean_reactions(message);
 
-    user_settings.display_emoji_reaction_users = true;
+    override(user_settings, "display_emoji_reaction_users", true);
 
     override(message_store, "get", () => message);
 

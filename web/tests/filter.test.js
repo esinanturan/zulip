@@ -8,7 +8,7 @@ const {mock_esm, with_overrides, zrequire} = require("./lib/namespace");
 const {run_test} = require("./lib/test");
 const blueslip = require("./lib/zblueslip");
 const $ = require("./lib/zjquery");
-const {current_user, page_params, realm} = require("./lib/zpage_params");
+const {page_params} = require("./lib/zpage_params");
 
 const message_store = mock_esm("../src/message_store");
 const user_topics = mock_esm("../src/user_topics");
@@ -17,6 +17,14 @@ const resolved_topic = zrequire("../shared/src/resolved_topic");
 const stream_data = zrequire("stream_data");
 const people = zrequire("people");
 const {Filter} = zrequire("../src/filter");
+const {set_current_user, set_realm} = zrequire("state_data");
+const {initialize_user_settings} = zrequire("user_settings");
+
+const realm = {};
+set_realm(realm);
+const current_user = {};
+set_current_user(current_user);
+initialize_user_settings({user_settings: {}});
 
 const stream_message = "stream";
 const direct_message = "private";
@@ -2017,7 +2025,7 @@ function make_web_public_sub(name, stream_id) {
     stream_data.add_sub(sub);
 }
 
-test("navbar_helpers", () => {
+test("navbar_helpers", ({override}) => {
     stream_data.add_sub(foo_sub);
 
     // make sure title has names separated with correct delimiters
@@ -2157,7 +2165,7 @@ test("navbar_helpers", () => {
         {
             terms: is_starred,
             is_common_narrow: true,
-            zulip_icon: "star-filled",
+            zulip_icon: "star",
             title: "translated: Starred messages",
             redirect_url_with_search: "/#narrow/is/starred",
             description: "translated: Important messages, tasks, and other useful references.",
@@ -2352,7 +2360,7 @@ test("navbar_helpers", () => {
         },
     ];
 
-    realm.realm_enable_guest_user_indicator = true;
+    override(realm, "realm_enable_guest_user_indicator", true);
 
     for (const test_case of test_cases) {
         test_helpers(test_case);
@@ -2407,7 +2415,7 @@ test("navbar_helpers", () => {
 
     test_get_title(channel_topic_search_term_test_case);
 
-    realm.realm_enable_guest_user_indicator = false;
+    override(realm, "realm_enable_guest_user_indicator", false);
     const guest_user_test_cases_without_indicator = [
         {
             terms: guest_sender,
@@ -2564,8 +2572,8 @@ run_test("equals", () => {
     );
 });
 
-run_test("adjusted_terms_if_moved", () => {
-    current_user.email = me.email;
+run_test("adjusted_terms_if_moved", ({override}) => {
+    override(current_user, "email", me.email);
     // should return null for non-stream messages containing no
     // `with` operator
     let raw_terms = [{operator: "channel", operand: foo_stream_id.toString()}];

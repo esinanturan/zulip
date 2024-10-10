@@ -6,7 +6,6 @@ const {mock_banners} = require("./lib/compose_banner");
 const {mock_esm, set_global, with_overrides, zrequire} = require("./lib/namespace");
 const {run_test, noop} = require("./lib/test");
 const $ = require("./lib/zjquery");
-const {current_user, realm, user_settings} = require("./lib/zpage_params");
 
 let autosize_called;
 
@@ -57,6 +56,15 @@ const compose_pm_pill = zrequire("compose_pm_pill");
 const compose_recipient = zrequire("compose_recipient");
 const composebox_typeahead = zrequire("composebox_typeahead");
 const settings_config = zrequire("settings_config");
+const {set_current_user, set_realm} = zrequire("state_data");
+const {initialize_user_settings} = zrequire("user_settings");
+
+const current_user = {};
+set_current_user(current_user);
+const realm = {};
+set_realm(realm);
+const user_settings = {};
+initialize_user_settings({user_settings});
 
 const ct = composebox_typeahead;
 
@@ -880,9 +888,9 @@ test("initialize", ({override, override_rewire, mock_template}) => {
     });
 
     let expected_value;
-    realm.custom_profile_field_types = {
+    override(realm, "custom_profile_field_types", {
         PRONOUNS: {id: 8, name: "Pronouns"},
-    };
+    });
 
     mock_template("typeahead_list_item.hbs", true, (data, html) => {
         assert.equal(typeof data.primary, "string");
@@ -1286,7 +1294,7 @@ test("initialize", ({override, override_rewire, mock_template}) => {
         }
     });
 
-    user_settings.enter_sends = false;
+    override(user_settings, "enter_sends", false);
     let compose_finish_called = false;
     function finish() {
         compose_finish_called = true;
@@ -1328,7 +1336,7 @@ test("initialize", ({override, override_rewire, mock_template}) => {
     $stub_target.attr("id", "stream_message_recipient_topic");
     $("form#send_message_form").trigger(event);
     $stub_target.attr("id", "compose-textarea");
-    user_settings.enter_sends = false;
+    override(user_settings, "enter_sends", false);
     event.metaKey = true;
 
     $("form#send_message_form").trigger(event);
@@ -1336,7 +1344,7 @@ test("initialize", ({override, override_rewire, mock_template}) => {
     event.metaKey = false;
     event.ctrlKey = true;
     $("form#send_message_form").trigger(event);
-    user_settings.enter_sends = true;
+    override(user_settings, "enter_sends", true);
     event.ctrlKey = false;
     event.altKey = true;
     $("form#send_message_form").trigger(event);
@@ -1965,10 +1973,10 @@ function possibly_silent_list(list, is_silent) {
     }));
 }
 
-test("filter_and_sort_mentions (normal)", () => {
+test("filter_and_sort_mentions (normal)", ({override}) => {
     compose_state.set_message_type("stream");
     const is_silent = false;
-    current_user.user_id = 101;
+    override(current_user, "user_id", 101);
     let suggestions = ct.filter_and_sort_mentions(is_silent, "al");
 
     const mention_all = broadcast_item(ct.broadcast_mentions()[0]);
@@ -1979,7 +1987,7 @@ test("filter_and_sort_mentions (normal)", () => {
 
     // call_center group is shown in typeahead even when user is member of
     // one of the subgroups of can_mention_group.
-    current_user.user_id = 104;
+    override(current_user, "user_id", 104);
     suggestions = ct.filter_and_sort_mentions(is_silent, "al");
     assert.deepEqual(
         suggestions,
@@ -1989,7 +1997,7 @@ test("filter_and_sort_mentions (normal)", () => {
     // call_center group is not shown in typeahead when user is neither
     // a direct member of can_mention_group nor a member of any of its
     // recursive subgroups.
-    current_user.user_id = 102;
+    override(current_user, "user_id", 102);
     suggestions = ct.filter_and_sort_mentions(is_silent, "al");
     assert.deepEqual(
         suggestions,
@@ -1997,7 +2005,7 @@ test("filter_and_sort_mentions (normal)", () => {
     );
 });
 
-test("filter_and_sort_mentions (silent)", () => {
+test("filter_and_sort_mentions (silent)", ({override}) => {
     const is_silent = true;
 
     let suggestions = ct.filter_and_sort_mentions(is_silent, "al");
@@ -2010,7 +2018,7 @@ test("filter_and_sort_mentions (silent)", () => {
     // call_center group is shown in typeahead irrespective of whether
     // user is member of can_mention_group or its subgroups for a
     // silent mention.
-    current_user.user_id = 102;
+    override(current_user, "user_id", 102);
     suggestions = ct.filter_and_sort_mentions(is_silent, "al");
     assert.deepEqual(
         suggestions,
@@ -2018,7 +2026,7 @@ test("filter_and_sort_mentions (silent)", () => {
     );
 });
 
-test("typeahead_results", () => {
+test("typeahead_results", ({override}) => {
     const stream_list = [
         denmark_stream,
         sweden_stream,
@@ -2132,7 +2140,7 @@ test("typeahead_results", () => {
     // Earlier user group and stream mentions were autocompleted by their
     // description too. This is now removed as it often led to unexpected
     // behaviour, and did not have any great discoverability advantage.
-    current_user.user_id = 101;
+    override(current_user, "user_id", 101);
     // Autocomplete user group mentions by group name.
     assert_mentions_matches("hamletchar", [not_silent(hamletcharacters)]);
 

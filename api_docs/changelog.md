@@ -20,6 +20,35 @@ format used by the Zulip server that they are interacting with.
 
 ## Changes in Zulip 10.0
 
+**Feature level 303**
+
+* [`POST /register`](/api/register-queue), [`GET /user_groups`](/api/get-user-groups),
+  [`GET /user_groups/{user_group_id}/members/{user_id}`](/api/get-is-user-group-member),
+  [`GET /user_groups/{user_group_id}/members`](/api/get-user-group-members):
+  Deactivated users are no longer returned as members of the user groups
+  that they were members of prior to deactivation.
+* [`POST /register`](/api/register-queue): Settings, represented as
+  [group-setting value](/api/group-setting-values), will never include
+  deactivated users in the `direct_members` list for settings whose
+  value is an anonymous group.
+* [`PATCH /user_groups/{user_group_id}/members`](/api/update-user-group-members):
+  Deactivated users cannot be added or removed from a user group; they
+  are now implicitly not members of any groups while deactivated.
+* [`GET /events`](/api/get-events): User reactivation event is not sent
+  to users who cannot access the reactivated user anymore due to a
+  `can_access_all_users_group` policy.
+* [`GET /events`](/api/get-events): The server will now send
+  `user_group` events with the `add_members`/`remove_members`
+  operations as appropriate when deactivating or reactivating a user,
+  to ensure client state correctly reflects groups never containing
+  deactivated users.
+* [`GET /events`](/api/get-events): To ensure that [group-setting
+  values](/api/group-setting-values) are correct, `realm/update_dict`
+  and `user_group/update` events may now be by sent by the server when
+  processing a deactivation/reactivation of a user, to ensure client
+  state correctly reflects the state, given that deactivated users
+  cannot have permissions in an organization.
+
 **Feature level 302**
 
 * [`GET /users/{email}`](/api/get-user-by-email): Changed the `email`
